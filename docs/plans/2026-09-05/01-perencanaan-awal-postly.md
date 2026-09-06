@@ -225,12 +225,12 @@ postly/
 #### Tahap 5: Public Profile & UI Polish
 - **Outcome:** Query profil user & daftar post user terkait, halaman Profile publik, penyesuaian styling dan responsive layout merujuk pada `references/UI/`.
 - **Checklist:**
-  - [ ] T05.1 Buat query GraphQL `userProfile(username)` untuk mengambil identitas user, avatar, dan seluruh postingan miliknya.
-  - [ ] T05.2 Buat halaman UI Public Profile merujuk pada `references/UI/profile-v2.png`.
-  - [ ] T05.3 Hubungkan klik pada nama author atau avatar di Feed / Post / Comment menuju halaman profil publik terkait.
-  - [ ] T05.4 Polish UI styling (Vanilla CSS, layout responsive, micro-interaction, penanganan loading & error state) agar sesuai referensi visual tanpa menggunakan screenshot sebagai background.
+  - [x] T05.1 Buat query GraphQL `userProfile(username)` untuk mengambil identitas user, avatar, dan seluruh postingan miliknya.
+  - [x] T05.2 Buat halaman UI Public Profile merujuk pada `references/UI/profile-v2.png`.
+  - [x] T05.3 Hubungkan klik pada nama author atau avatar di Feed / Post / Comment menuju halaman profil publik terkait.
+  - [x] T05.4 Polish UI styling (Vanilla CSS, layout responsive, micro-interaction, penanganan loading & error state) agar sesuai referensi visual tanpa menggunakan screenshot sebagai background.
 - **Acceptance Condition:** Klik author membuka profil publik user yang benar beserta daftar post-nya; UI bersih dan tidak menggunakan screenshot sebagai background.
-- **Verification:** Verifikasi interaksi visual flow di browser.
+- **Verification:** Verifikasi interaksi visual flow di browser — profile grid view & feed view terverifikasi via browser subagent screenshots.
 - **Stop Condition:** Berhenti jika navigasi profil atau relasi post author menampilkan data yang keliru.
 
 ---
@@ -249,15 +249,17 @@ postly/
 
 ---
 
-## 8. Definition of Done Tahap 0 s/d Tahap 4
+## 8. Definition of Done Tahap 0 s/d Tahap 5
 
 - [x] Seluruh item D00.1–D00.10 mempunyai hasil yang dapat direview.
 - [x] Seluruh item T01.1–T01.5 pada Tahap 1 telah selesai diimplementasikan.
 - [x] Seluruh item T02.1–T02.6 pada Tahap 2 telah selesai diimplementasikan.
 - [x] Seluruh item T03.1–T03.5 pada Tahap 3 telah selesai diimplementasikan.
 - [x] Seluruh item T04.1–T04.6 pada Tahap 4 telah selesai diimplementasikan.
+- [x] Seluruh item T05.1–T05.4 pada Tahap 5 telah selesai diimplementasikan.
 - [x] Backend Express + Apollo Server + Prisma SQLite menegakkan invariant komentar 1-tingkat (no reply-to-reply) dan validasi parent berasal dari post yang sama.
 - [x] Frontend React + Apollo Client menyediakan antarmuka thread komentar, form balasan 1-tingkat, dan update counter komentar realtime.
+- [x] Halaman profil publik menampilkan data user yang benar beserta seluruh post miliknya, navigasi author di Feed/PostCard/CommentItem berfungsi penuh.
 - [x] Setiap klaim selesai mempunyai catatan bukti pada Log Eksekusi.
 
 ## 9. Log Eksekusi
@@ -393,3 +395,41 @@ postly/
     - Browser subagent membuka feed dan memverifikasi komentar utama `@alex Kopi mantap untuk coding sore!` serta balasan 1-tingkat `@alex Setuju banget! Apalagi sambil denger musik lo-fi.`
     - Subagent mengirim komentar baru `Semangat belajarnya teman-teman!` dan memverifikasi komentar baru langsung tampil serta counter bertambah menjadi 3 komentar.
 * **Risiko / Blocker:** Tidak ada. Invariant komentar dan balasan ditegakkan 100% pada level backend dan frontend.
+
+### 2026-09-06 — Eksekusi Tahap 5 (Public Profile & UI Polish)
+
+* **Checklist ID:** T05.1 – T05.4
+* **Perubahan Kode / File:**
+  - `server/src/schema/typeDefs.js`: Menambahkan field `posts: [Post!]!` pada type `User` dan query `userProfile(username: String!): User` pada type `Query`.
+  - `server/src/resolvers/index.js`:
+    - Resolver `Query.userProfile(username)`: lookup user by username, return user object (atau error jika tidak ditemukan).
+    - Resolver `User.posts(parent)`: fetch semua post milik user diurutkan `createdAt: desc`.
+  - `server/src/test_user_profile.js`: Script test `userProfile` query — verifikasi data user alex (2 post dengan komentar/replies) dan verifikasi error untuk user non-existent.
+  - `client/src/graphql/profile.js` [NEW]: GraphQL operation `USER_PROFILE_QUERY` dengan field lengkap: id, username, email, avatar, createdAt, posts (dengan nested author, comments, replies).
+  - `client/src/components/ProfileView.jsx` [NEW]: Komponen halaman profil publik dengan:
+    - Tombol "← Kembali ke Feed" navigasi ke feed.
+    - Profile header card: avatar lingkar dengan border biru, username, handle `@username`, bio, badge jumlah post & tanggal bergabung.
+    - Toggle view mode: Grid (default, 2 kolom, hover overlay caption) vs Feed (full PostCard list).
+    - Grid-item clickable: klik buka expanded PostCard langsung di bawah item grid yang bersangkutan.
+    - State loading (spinner) dan error state (pengguna tidak ditemukan).
+  - `client/src/components/Navbar.jsx`: Diperbarui menerima props `onNavigateFeed`, `onNavigateProfile`, `onOpenCreatePost`, `activeView`; menambahkan nav links tengah (Feed, + Buat Post); avatar/username di navbar klik → navigasi ke profil sendiri.
+  - `client/src/App.jsx`: State navigasi `currentView: { type: 'feed' } | { type: 'profile', username }` menggantikan single Feed view; handler `handleNavigateFeed` dan `handleNavigateProfile` dipropagasi ke semua komponen anak; top padding `1.5rem` pada main.
+  - `client/src/index.css`: Menambahkan 300+ baris styles baru:
+    - `.navbar-nav`, `.nav-link-btn` (active state), `.user-badge-link` (hover)
+    - `.profile-container` (fade-in animation), `.profile-nav-bar`, `.btn-back`
+    - `.profile-header-card`, `.profile-avatar-lg` (border biru), `.profile-details`, `.profile-fullname`, `.profile-handle`, `.profile-bio`, `.profile-meta-tags`, `.profile-badge`
+    - `.profile-view-toggle`, `.view-toggle-btn` (active = biru)
+    - `.profile-posts-grid` (2-col CSS Grid), `.profile-grid-item` (hover lift + border), `.profile-grid-overlay` (fade-in gradient), `.profile-grid-caption`, `.profile-grid-expanded-post` (fade-in)
+    - `.empty-profile-posts`, `.profile-posts-list`
+    - Responsive breakpoint `@media (max-width: 640px)`: stacked header + 1-column grid
+    - `.navbar-container max-width: 900px` (override untuk 3-section layout brand/nav/actions)
+* **Verifikasi Aktual:**
+  - **Test userProfile via `test_user_profile.js`:**
+    - Query `userProfile(username: "alex")` mengembalikan: id, username `alex`, email `alex@example.com`, avatar `avatar-alex`, createdAt, dan array `posts` berisi 2 post lengkap beserta nested `comments` dan `replies`.
+    - Query `userProfile(username: "non_existent_user_999")` mengembalikan error GraphQL: `"Pengguna dengan username @non_existent_user_999 tidak ditemukan."` dan `data.userProfile: null`.
+  - **Browser Subagent Screenshots:**
+    - **Grid View:** Profil `@alex` ditampilkan dengan avatar lingkar (biru), nama `alex`, handle `@alex`, bio, badge `📸 2 Post`, badge `🗓️ Bergabung September 2026`, 2 gambar post dalam layout 2-kolom grid dengan hover overlay. Navbar menampilkan: Postly brand | Feed + Buat Post | @alex avatar + Logout.
+    - **Feed View:** Toggle ke ☰ Feed menampilkan full PostCard list dengan gambar, caption, comment section lengkap.
+    - Navigasi kembali ke feed berfungsi via tombol "← Kembali ke Feed".
+    - Klik avatar `@alex` di navbar berhasil membuka profil sendiri.
+* **Risiko / Blocker:** Tidak ada. Semua acceptance condition Tahap 5 terpenuhi.

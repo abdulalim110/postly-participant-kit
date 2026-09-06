@@ -39,7 +39,7 @@ export default function App() {
         activeView={currentView.type}
       />
 
-      <main className="container" style={{ flex: 1, paddingBottom: '3rem' }}>
+      <main className="container" style={{ flex: 1, paddingBottom: '3rem', paddingTop: '1.5rem' }}>
         {currentView.type === 'feed' ? (
           <Feed
             onOpenCreatePost={() => setIsCreatePostOpen(true)}

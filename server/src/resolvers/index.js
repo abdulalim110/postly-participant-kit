@@ -2,6 +2,22 @@ import prisma from '../db.js';
 import { hashPassword, comparePassword, generateToken } from '../auth.js';
 import { ALLOWED_POST_IMAGES } from '../constants.js';
 
+// ─── Helper: Prisma include shape reused across feed & profile ────────────────
+const POST_INCLUDE_WITH_RELATIONS = {
+  author: true,
+  comments: {
+    where: { parentId: null },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      author: true,
+      replies: {
+        orderBy: { createdAt: 'asc' },
+        include: { author: true },
+      },
+    },
+  },
+};
+
 export const resolvers = {
   Query: {
     ping: () => 'pong - Postly GraphQL Server ready!',
@@ -11,16 +27,28 @@ export const resolvers = {
         where: { id: context.currentUser.id },
       });
     },
+
+    /**
+     * T06.5 OPTIMIZED: Menggunakan Prisma `include` untuk eager loading semua relasi
+     * dalam satu batch query. Mengeliminasi N+1 problem.
+     * SEBELUM: 1 + P + P + C + C + R queries (N+1)
+     * SESUDAH:  6 queries tetap (1 posts + 1 authors + 1 top-comments + 1 comment-authors
+     *           + 1 replies + 1 reply-authors), tidak bergantung pada jumlah data.
+     */
     feed: async () => {
       return prisma.post.findMany({
         orderBy: { createdAt: 'desc' },
+        include: POST_INCLUDE_WITH_RELATIONS,
       });
     },
+
     post: async (_, { id }) => {
       return prisma.post.findUnique({
         where: { id },
+        include: POST_INCLUDE_WITH_RELATIONS,
       });
     },
+
     userProfile: async (_, { username }) => {
       if (!username) {
         throw new Error('Username wajib diisi.');
@@ -113,6 +141,7 @@ export const resolvers = {
           imageUrl: imageUrl.trim(),
           authorId: context.currentUser.id,
         },
+        include: POST_INCLUDE_WITH_RELATIONS,
       });
 
       return post;
@@ -167,18 +196,31 @@ export const resolvers = {
           parentId: parentId || null,
           content: content.trim(),
         },
+        include: {
+          author: true,
+          replies: {
+            include: { author: true },
+          },
+        },
       });
 
       return comment;
     },
   },
+  /**
+   * Field resolvers di bawah ini tetap dipertahankan sebagai fallback.
+   * Ketika `feed` resolver sudah menyertakan data via `include`, Apollo Server
+   * akan menggunakan data yang sudah ada di `parent` object dan TIDAK memanggil
+   * field resolver ini. Field resolver hanya terpanggil jika field tsb belum ada
+   * di parent object (e.g., saat resolver lain mengembalikan partial object).
+   */
   Post: {
     author: async (parent) => {
-      return prisma.user.findUnique({
-        where: { id: parent.authorId },
-      });
+      if (parent.author) return parent.author; // sudah di-eager-load
+      return prisma.user.findUnique({ where: { id: parent.authorId } });
     },
     comments: async (parent) => {
+      if (parent.comments) return parent.comments; // sudah di-eager-load
       return prisma.comment.findMany({
         where: { postId: parent.id, parentId: null },
         orderBy: { createdAt: 'asc' },
@@ -187,22 +229,18 @@ export const resolvers = {
   },
   Comment: {
     author: async (parent) => {
-      return prisma.user.findUnique({
-        where: { id: parent.authorId },
-      });
+      if (parent.author) return parent.author; // sudah di-eager-load
+      return prisma.user.findUnique({ where: { id: parent.authorId } });
     },
     post: async (parent) => {
-      return prisma.post.findUnique({
-        where: { id: parent.postId },
-      });
+      return prisma.post.findUnique({ where: { id: parent.postId } });
     },
     parent: async (parent) => {
       if (!parent.parentId) return null;
-      return prisma.comment.findUnique({
-        where: { id: parent.parentId },
-      });
+      return prisma.comment.findUnique({ where: { id: parent.parentId } });
     },
     replies: async (parent) => {
+      if (parent.replies) return parent.replies; // sudah di-eager-load
       return prisma.comment.findMany({
         where: { parentId: parent.id },
         orderBy: { createdAt: 'asc' },
@@ -210,11 +248,17 @@ export const resolvers = {
     },
   },
   User: {
+    /**
+     * T06.5 OPTIMIZED: user.posts juga menggunakan include untuk eager loading
+     * relasi komentar ketika profile view membutuhkan nested data.
+     */
     posts: async (parent) => {
       return prisma.post.findMany({
         where: { authorId: parent.id },
         orderBy: { createdAt: 'desc' },
+        include: POST_INCLUDE_WITH_RELATIONS,
       });
     },
   },
 };
+
